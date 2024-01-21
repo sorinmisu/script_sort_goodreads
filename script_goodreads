@@ -1,0 +1,190 @@
+// ==UserScript==
+// @name         Sort Goodreads Recommendations
+// @namespace    http://yournamespace.com
+// @version      1.0
+// @description  Sort Goodreads recommendations by average rating.
+// @author       Your Name
+// @match        https://www.goodreads.com/recommendations*
+// @grant        GM_addStyle
+// ==/UserScript==
+
+
+// Function to calculate a composite score based on average rating and logarithmically scaled number of ratings
+function calculateCompositeScoreWithScaledNumRatings(bookElement) {
+    var avgRating = getRatingValue(bookElement.querySelector('.minirating'));
+    var numRatings = getNumRatings(bookElement.querySelector('.minirating'));
+
+    // Scale the number of ratings to the range [0, 10]
+    var scaledNumRatings = (numRatings / 10000000) * 10;
+
+    // Define weights for average rating and scaled number of ratings
+    var weightAvgRating = 0.7;
+    var weightScaledNumRatings = 0.3;
+
+    // Calculate the composite score using the weighted sum
+    var compositeScore = (weightAvgRating * avgRating) + (weightScaledNumRatings * scaledNumRatings);
+
+    return compositeScore;
+}
+
+
+// Function to extract the number of ratings
+function getNumRatings(ratingElement) {
+    if (ratingElement) {
+        // Use a regular expression to match the number of ratings
+        var match = ratingElement.textContent.match(/— (\d+,?\d+) ratings/);
+        if (match) {
+            // Remove commas and convert to a number
+            return parseInt(match[1].replace(',', ''), 10);
+        }
+    }
+    return 0; // Return 0 if the number of ratings couldn't be extracted
+}
+
+// Function to extract the numeric value from the rating element
+function getRatingValue(ratingElement) {
+    if (ratingElement) {
+        // Use a regular expression to match the decimal part of the rating text
+        var match = ratingElement.textContent.match(/(\d+\.\d+)/);
+        if (match) {
+            return parseFloat(match[0]);
+        }
+    }
+    return NaN; // Return NaN if the rating couldn't be extracted
+}
+
+// Update the sort function to use the composite score
+function sortRecommendations() {
+    console.log('Sort button clicked!');
+
+    // Get all book rows
+    var bookRows = document.querySelectorAll('.bookRow.clearfix');
+
+    // Convert NodeList to array for sorting
+    var bookArray = Array.from(bookRows);
+
+    // Sort books based on the composite score
+    bookArray.sort(function(a, b) {
+        var scoreA = calculateCompositeScoreWithScaledNumRatings(a);
+        var scoreB = calculateCompositeScoreWithScaledNumRatings(b);
+
+        return scoreB - scoreA; // Sort in descending order
+    });
+
+    // Remove existing book rows
+    bookRows.forEach(function(row) {
+        row.remove();
+    });
+
+    // Append sorted book rows back to the container
+    bookArray.forEach(function(row) {
+        document.querySelector('.listViewBox').appendChild(row);
+    });
+}
+
+
+// Add a button to the page
+var sortButton = document.createElement('button');
+sortButton.innerHTML = 'Sort Recommendations';
+sortButton.classList.add('sort-button');
+
+// Add click event listener to the button
+sortButton.addEventListener('click', sortRecommendations);
+
+// Get the bigBoxBody element
+var bigBoxBody = document.querySelector('.bigBoxBody');
+
+// Insert button at the top of bigBoxBody
+bigBoxBody.insertBefore(sortButton, bigBoxBody.firstChild);
+
+// Add some styling to the button
+/*GM_addStyle(`
+    .sort-button {
+        margin: 10px 0;
+        padding: 8px 16px;
+        cursor: pointer;
+        background-color: #4CAF50;
+        color: white;
+        border: none;
+        border-radius: 4px;
+        font-size: 14px;
+        font-weight: bold;
+        transition: background-color 0.3s;
+    }
+
+    .sort-button:hover {
+        background-color: #45a049;
+    }
+`);*/
+
+// Add some styling to the button
+GM_addStyle(`
+    .sort-button {
+        margin: 15px 15px;
+        padding: 10px 20px;
+        cursor: pointer;
+        background-color: #4B9C5D;
+        color: #ffffff;
+        border: none;
+        border-radius: 5px;
+        font-size: 16px;
+        font-weight: bold;
+        transition: background-color 0.3s, color 0.3s;
+    }
+
+    .sort-button:hover {
+        background-color: #2980b9;
+    }
+
+    .margin-left-important {
+        margin-left: 10px !important; // Important rule to prioritize the margin
+    }
+`);
+
+
+// Function to sort recommendations by average rating
+function sortRecommendationsByAvgRating() {
+    console.log('Sort by Average Rating button clicked!');
+
+    // Get all book rows
+    var bookRows = document.querySelectorAll('.bookRow.clearfix');
+
+    // Convert NodeList to array for sorting
+    var bookArray = Array.from(bookRows);
+
+    // Sort books based on average rating
+    bookArray.sort(function(a, b) {
+        var ratingA = getRatingValue(a.querySelector('.minirating'));
+        var ratingB = getRatingValue(b.querySelector('.minirating'));
+
+        return ratingB - ratingA; // Sort in descending order
+    });
+
+    // Remove existing book rows
+    bookRows.forEach(function(row) {
+        row.remove();
+    });
+
+    // Append sorted book rows back to the container
+    bookArray.forEach(function(row) {
+        document.querySelector('.listViewBox').appendChild(row);
+    });
+}
+
+// Add a button to sort by average rating
+var sortAvgRatingButton = document.createElement('button');
+sortAvgRatingButton.innerHTML = 'Sort by Avg Rating';
+sortAvgRatingButton.classList.add('sort-button');
+
+// Add click event listener to the button
+sortAvgRatingButton.addEventListener('click', sortRecommendationsByAvgRating);
+
+// Insert button next to the existing one
+bigBoxBody.insertBefore(sortAvgRatingButton, sortButton.nextSibling);
+
+// Add some styling to the new button
+GM_addStyle(`
+    .margin-left-important {
+        margin-left: 100px !important; // Important rule to prioritize the margin
+    }
+`);
