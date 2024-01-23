@@ -103,7 +103,7 @@ bigBoxBody.insertBefore(sortButton, bigBoxBody.firstChild);
         margin: 10px 0;
         padding: 8px 16px;
         cursor: pointer;
-        background-color: #4CAF50;
+        background-color: #419C69;
         color: white;
         border: none;
         border-radius: 4px;
