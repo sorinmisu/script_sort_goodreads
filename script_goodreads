@@ -1,9 +1,9 @@
 // ==UserScript==
-// @name         Enhanced Goodreads Recommendations Sorting
+// @name         Enhanced Goodreads Recommendations Sorting with Bayesian Weighted Rating
 // @namespace    http://yournamespace.com
-// @version      1.0
-// @description  Sort Goodreads recommendations by average rating or composite score with UI enhancements and error handling.
-// @author       Your Name
+// @version      1.2
+// @description  Sort Goodreads recommendations by various methods (Bayesian weighted rating, average rating, composite score) with UI enhancements and error handling.
+// @author       ...
 // @match        https://www.goodreads.com/recommendations*
 // @grant        GM_addStyle
 // ==/UserScript==
@@ -14,25 +14,19 @@
     // Cached DOM selectors
     let bookRows, listViewBox, bigBoxBody, ratingThresholdInput;
 
-    // Update the cached selectors
+    // ---------------------------
+    //  UTILITY: DOM SELECTORS
+    // ---------------------------
     function updateSelectors() {
         bookRows = document.querySelectorAll('.bookRow.clearfix');
         listViewBox = document.querySelector('.listViewBox');
         bigBoxBody = document.querySelector('.bigBoxBody');
     }
 
-    // Function to calculate a composite score based on average rating and logarithmically scaled number of ratings
-    function calculateCompositeScoreWithScaledNumRatings(bookElement) {
-        var avgRating = getRatingValue(bookElement.querySelector('.minirating'));
-        var numRatings = getNumRatings(bookElement.querySelector('.minirating'));
-        var scaledNumRatings = (numRatings / 10000000) * 10;
-        var weightAvgRating = 0.7;
-        var weightScaledNumRatings = 0.3;
-        var compositeScore = (weightAvgRating * avgRating) + (weightScaledNumRatings * scaledNumRatings);
-        return compositeScore;
-    }
-
-    // Function to extract the number of ratings from the rating element
+    // ---------------------------
+    //  UTILITY: RATING EXTRACTORS
+    // ---------------------------
+    // Extract the number of ratings from the rating element
     function getNumRatings(ratingElement) {
         if (ratingElement) {
             var match = ratingElement.textContent.match(/— (\d+,?\d+) ratings/);
@@ -43,7 +37,7 @@
         return 0;
     }
 
-    // Function to extract the numeric value from the rating element
+    // Extract the numeric value from the rating element
     function getRatingValue(ratingElement) {
         if (ratingElement) {
             var match = ratingElement.textContent.match(/(\d+\.\d+)/);
@@ -54,9 +48,21 @@
         return NaN;
     }
 
-    // Function to sort recommendations based on composite score
-    function sortRecommendations() {
-        console.log('Sort button clicked!');
+    // ---------------------------
+    //  SORT METHOD #1: COMPOSITE
+    // ---------------------------
+    function calculateCompositeScoreWithScaledNumRatings(bookElement) {
+        var avgRating = getRatingValue(bookElement.querySelector('.minirating'));
+        var numRatings = getNumRatings(bookElement.querySelector('.minirating'));
+        var scaledNumRatings = (numRatings / 10000000) * 10;
+        var weightAvgRating = 0.7;
+        var weightScaledNumRatings = 0.3;
+        var compositeScore = (weightAvgRating * avgRating) + (weightScaledNumRatings * scaledNumRatings);
+        return compositeScore;
+    }
+
+    function sortRecommendationsByComposite() {
+        console.log('Sort by Composite Score button clicked!');
         var bookArray = Array.from(bookRows);
         bookArray.sort(function(a, b) {
             var scoreA = calculateCompositeScoreWithScaledNumRatings(a);
@@ -71,7 +77,9 @@
         });
     }
 
-    // Function to sort recommendations based on average rating
+    // ----------------------------
+    //  SORT METHOD #2: AVG RATING
+    // ----------------------------
     function sortRecommendationsByAvgRating() {
         console.log('Sort by Average Rating button clicked!');
         var bookArray = Array.from(bookRows);
@@ -88,7 +96,66 @@
         });
     }
 
-    // Function to filter books based on the set rating threshold
+    // -------------------------------------------
+    //  SORT METHOD #3: BAYESIAN WEIGHTED RATING
+    // -------------------------------------------
+    // a) Compute the global average rating (C)
+    function getGlobalAverageRating(bookElements) {
+        let totalRating = 0;
+        let count = 0;
+        bookElements.forEach(book => {
+            const rating = getRatingValue(book.querySelector('.minirating'));
+            if (!isNaN(rating)) {
+                totalRating += rating;
+                count++;
+            }
+        });
+        return count > 0 ? totalRating / count : 0;
+    }
+
+    // b) Compute Bayesian Weighted Rating
+    function calculateBayesianWeightedRating(bookElement, C, m) {
+        const R = getRatingValue(bookElement.querySelector('.minirating')); // average rating for this book
+        const v = getNumRatings(bookElement.querySelector('.minirating')); // number of ratings
+
+        if (isNaN(R) || v === 0) {
+            return 0;
+        }
+        // Weighted rating formula: (v/(v+m))*R + (m/(v+m))*C
+        return (v / (v + m)) * R + (m / (v + m)) * C;
+    }
+
+    // c) Sort using Bayesian Weighted Rating
+    function sortRecommendationsByBayesian() {
+        console.log('Sort by Bayesian Weighted Rating button clicked!');
+        const bookArray = Array.from(bookRows);
+
+        // 1) Calculate the global average rating
+        const globalAverageRating = getGlobalAverageRating(bookArray);
+
+        // 2) Define a constant m (minimum number of ratings)
+        //    Adjust this value as needed for your recommendation set.
+        const m = 1000;
+
+        // 3) Sort based on the Bayesian Weighted Rating
+        bookArray.sort((a, b) => {
+            const bayesA = calculateBayesianWeightedRating(a, globalAverageRating, m);
+            const bayesB = calculateBayesianWeightedRating(b, globalAverageRating, m);
+            return bayesB - bayesA;
+        });
+
+        // 4) Re-append sorted books
+        bookRows.forEach(function(row) {
+            row.remove();
+        });
+        bookArray.forEach(function(row) {
+            listViewBox.appendChild(row);
+        });
+    }
+
+    // ------------------------------------------
+    //  FILTER: RATING THRESHOLD
+    // ------------------------------------------
     function filterBooksByRatingThreshold() {
         const threshold = parseFloat(ratingThresholdInput.value);
         bookRows.forEach(bookRow => {
@@ -101,32 +168,62 @@
         });
     }
 
-    // Function to add a rating threshold input to the page
+    // Add a rating threshold input to the page
     function addRatingThresholdInput() {
         ratingThresholdInput = document.createElement('input');
         ratingThresholdInput.type = 'number';
         ratingThresholdInput.placeholder = 'Minimum Avg Rating (e.g., 3.5)';
         ratingThresholdInput.className = 'rating-threshold-input';
+
+        // Simple tooltip on the input
+        ratingThresholdInput.title = 'Only show books with average rating above this value';
+
         ratingThresholdInput.addEventListener('change', filterBooksByRatingThreshold);
         bigBoxBody.insertBefore(ratingThresholdInput, bigBoxBody.firstChild);
     }
 
-    function addSortButton() {
-        var sortButton = document.createElement('button');
-        sortButton.innerHTML = 'Sort Recommendations';
-        sortButton.classList.add('sort-button');
-        sortButton.addEventListener('click', sortRecommendations);
-        bigBoxBody.insertBefore(sortButton, bigBoxBody.firstChild);
+    // ------------------------------------------
+    //  UI BUTTONS
+    // ------------------------------------------
+    function addSortByCompositeButton() {
+        var button = document.createElement('button');
+        button.innerHTML = 'Sort by Composite Score';
+        button.classList.add('sort-button');
+
+        // Tooltip
+        button.title = 'Sorts recommendations by a custom blend of average rating\nand a scaled number of ratings';
+
+        button.addEventListener('click', sortRecommendationsByComposite);
+        bigBoxBody.insertBefore(button, bigBoxBody.firstChild);
     }
 
     function addSortByAvgRatingButton() {
-        var sortAvgRatingButton = document.createElement('button');
-        sortAvgRatingButton.innerHTML = 'Sort by Avg Rating';
-        sortAvgRatingButton.classList.add('sort-button');
-        sortAvgRatingButton.addEventListener('click', sortRecommendationsByAvgRating);
-        bigBoxBody.insertBefore(sortAvgRatingButton, bigBoxBody.children[1]);
+        var button = document.createElement('button');
+        button.innerHTML = 'Sort by Average Rating';
+        button.classList.add('sort-button');
+
+        // Tooltip
+        button.title = 'Sorts recommendations by raw average rating';
+
+        button.addEventListener('click', sortRecommendationsByAvgRating);
+        bigBoxBody.insertBefore(button, bigBoxBody.children[1]);
     }
 
+    function addSortByBayesianButton() {
+        var button = document.createElement('button');
+        button.innerHTML = 'Sort by Bayesian Weighted Rating';
+        button.classList.add('sort-button');
+
+        // Tooltip for Bayesian Weighted Rating
+        button.title = 'Sorts by Bayesian Weighted Rating:\n(v/(v+m))*R + (m/(v+m))*C';
+
+        button.addEventListener('click', sortRecommendationsByBayesian);
+        bigBoxBody.insertBefore(button, bigBoxBody.children[2]);
+    }
+
+    // ------------------------------------------
+    //  ERROR SAFETY & MUTATION OBSERVER
+    // ------------------------------------------
     function safelyExecute(fn) {
         try {
             return fn();
@@ -146,15 +243,24 @@
         observer.observe(document.body, { childList: true, subtree: true });
     }
 
-    // Initial setup: update selectors, add UI elements, and set up observer
+    // ------------------------------------------
+    //  INITIAL SETUP
+    // ------------------------------------------
     updateSelectors();
-    safelyExecute(addSortButton);
+    safelyExecute(addSortByCompositeButton);
     safelyExecute(addSortByAvgRatingButton);
+    safelyExecute(addSortByBayesianButton);
     safelyExecute(addRatingThresholdInput);
     observePageChanges();
 
-    // Styling for the buttons and input
+    // ------------------------------------------
+    //  STYLING
+    // ------------------------------------------
     GM_addStyle(`
+    .sort-button {
+        margin-right: 5px; /* instead of 10px all around */
+     }
+
     .sort-button, input[type='number'] {
         margin: 10px;
         padding: 8px 16px;
@@ -169,21 +275,21 @@
     }
     .sort-button:hover {
         background-color: #2B6846;
+        box-shadow: 0 0 6px rgba(0,0,0,0.2);
     }
     input[type='number'] {
-        width: 25%; /* Adjusted width */
-        background-color: #f0f0f0; /* Light grey background */
-        color: #333; /* Darker text color for better contrast */
-        border: 2px solid #419C69; /* Adding border with the same color as buttons */
-        border-radius: 4px; /* Rounded corners */
-        padding: 10px; /* More padding for better text visibility */
-        font-size: 10.5px; /* Slightly larger font size */
-        box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2); /* Subtle shadow for depth */
+        width: 25%;
+        background-color: #f0f0f0;
+        color: #333;
+        border: 2px solid #419C69;
+        border-radius: 4px;
+        padding: 10px;
+        font-size: 10.5px;
+        box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
     }
     input[type='number']:focus {
-        outline: none; /* Removing default focus outline */
-        box-shadow: 0 0 5px #005f6b; /* Focus state with a different color shadow */
+        outline: none;
+        box-shadow: 0 0 5px #005f6b;
     }
-`);
-
+    `);
 })();
